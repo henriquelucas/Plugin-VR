@@ -4,7 +4,7 @@
 *Descrição: Página inicial do plugin, mostrando um resumo das consultas disponíveis.*
 
 ![Configurações](screenshots/preco.png)
-*Descrição: Página de configurações do plugin, onde o usuário pode personalizar as opções conforme necessário.*
+*Descrição: Pagina de consulta de preço do Plugin*
 
 Uma das grandes vantagens deste plugin é a sua simplicidade de uso aliada à sua eficácia. Com uma interface intuitiva e amigável, até mesmo usuários iniciantes podem navegar com facilidade pelas diversas funcionalidades oferecidas. Além disso, a integração perfeita com o banco de dados da VRSoftware garante que as informações estejam sempre atualizadas e acessíveis em tempo real, proporcionando uma gestão mais eficiente e precisa.
 
