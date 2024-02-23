@@ -19,6 +19,15 @@ function carregar_bootstrap_cdn_no_admin() {
 }
 add_action('admin_enqueue_scripts', 'carregar_bootstrap_cdn_no_admin');
 
+// Função para adicionar CDN do Chart.js
+function adicionar_chartjs_cdn() {
+    // Adiciona o CDN do Chart.js apenas na página de vendas
+    if (isset($_GET['page']) && $_GET['page'] === 'vr-vendas') {
+        wp_enqueue_script('chartjs', 'https://cdn.jsdelivr.net/npm/chart.js', array(), '2.9.4');
+    }
+}
+add_action('admin_enqueue_scripts', 'adicionar_chartjs_cdn');
+
 // Registra e enfileira o estilo do plugin
 function vr_registrar_estilo() {
     wp_register_style( 'vr-software-estilo', plugins_url( 'css/style.css', __FILE__ ) );
@@ -121,13 +130,32 @@ function vr_adicionar_paginas() {
         'vr-vendas', // Slug da página
         'vr_vendas_conteudo' // Callback da função para exibir o conteúdo da página
     );
+
+    // Submenu - Preço
+    add_submenu_page(
+        'vr-pagina', // Slug da página pai
+        'Preço', // Título da página
+        'Preço', // Nome do menu
+        'manage_options', // Capacidade necessária para acessar
+        'vr-preco', // Slug da página
+        'vr_preco_conteudo' // Callback da função para exibir o conteúdo da página
+    );
+
+    add_submenu_page(
+        'vr-pagina', // Slug da página pai
+        'DSV', // Título da página
+        'DSV', // Nome do menu
+        'manage_options', // Capacidade necessária para acessar
+        'vr-dsv', // Slug da página
+        'vr_dsv_conteudo' // Callback da função para exibir o conteúdo da página
+    );
 }
 add_action('admin_menu', 'vr_adicionar_paginas');
 
 // Conteúdo da página principal
 function vr_pagina_conteudo() {
     ?>
-    <div class="wrap">
+    <div class="wrap bg-white border">
         <h1>Bem Vindo ao VR Software</h1>
         <p>Aqui está o conteúdo da sua página principal do plugin.</p>
         
@@ -177,68 +205,108 @@ if (isset($_POST['submit_pg_config'])) {
     ));
 }
 
-// Conteúdo da página de vendas
-// Conteúdo da página de vendas
+
 function vr_vendas_conteudo() {
-    // Estabelece a conexão com o banco de dados PostgreSQL
-    $conexao_postgresql = vr_estabelecer_conexao_postgresql();
+       // Estabelece a conexão com o banco de dados PostgreSQL
+       $conexao_postgresql = vr_estabelecer_conexao_postgresql();
 
-    // Define as datas inicial e final como a data de hoje
-    $data_inicial = date('Y-m-d');
-    $data_final = date('Y-m-d');
-
-    // Verifica se o formulário foi enviado e obtém as datas fornecidas
-    if (isset($_POST['submit_dates'])) {
-        $data_inicial = sanitize_text_field($_POST['data_inicial']);
-        $data_final = sanitize_text_field($_POST['data_final']);
-    }
-
-    try {
-        // Prepara a consulta SQL
-        $stmt = $conexao_postgresql->prepare("
-            SELECT SUM(subtotalimpressora) - SUM(valordesconto) + SUM(valoracrescimo) as resultado
-            FROM pdv.venda
-            WHERE data >= ? AND data <= ?
-            AND cancelado = false
-            AND canceladoemvenda = false
-            AND id_loja = ?
-        ");
-
-        // Executa a consulta
-        $stmt->execute(array($data_inicial, $data_final, get_current_user_id()));
-
-        // Obtém o resultado
-        $resultado = $stmt->fetchColumn();
-
-        // Formata o resultado para exibir no formato de moeda
-        $resultado_formatado = number_format($resultado, 2, ',', '.'); // Formato: R$ 40.251,89
-
-        // Exibe o formulário para inserir as datas
-        ?>
+       // Define as datas inicial e final como a data de hoje
+       $data_inicial = date('Y-m-d');
+       $data_final = date('Y-m-d');
+   
+       // Verifica se o formulário foi enviado e obtém as datas fornecidas
+       if (isset($_POST['submit_dates'])) {
+           $data_inicial = sanitize_text_field($_POST['data_inicial']);
+           $data_final = sanitize_text_field($_POST['data_final']);
+       }
+   
+       try {
+           // Prepara a consulta SQL para o período atual
+           $stmt_atual = $conexao_postgresql->prepare("
+               SELECT SUM(subtotalimpressora) - SUM(valordesconto) + SUM(valoracrescimo) as resultado, COUNT(*) as total_vendas
+               FROM pdv.venda
+               WHERE data >= ? AND data <= ?
+               AND cancelado = false
+               AND canceladoemvenda = false
+               AND id_loja = ?
+           ");
+   
+           // Executa a consulta para o período atual
+           $stmt_atual->execute(array($data_inicial, $data_final, get_current_user_id()));
+   
+           // Obtém o resultado do período atual
+           $resultado_atual = $stmt_atual->fetch(PDO::FETCH_ASSOC);
+   
+           // Formata os resultados para exibir no formato de moeda
+           $resultado_atual_formatado = number_format($resultado_atual['resultado'], 2, ',', '.'); // Formato: R$ 40.251,89
+           $ticket_medio_formatado = number_format($ticket_medio, 2, ',', '.'); // Formato: R$ 40.251,89
+   
+           // Prepara a consulta SQL para o período do mês anterior
+           $data_inicial_mes_passado = date('Y-m-d', strtotime('-1 month', strtotime($data_inicial)));
+           $data_final_mes_passado = date('Y-m-d', strtotime('-1 month', strtotime($data_final)));
+           $stmt_mes_passado = $conexao_postgresql->prepare("
+               SELECT SUM(subtotalimpressora) - SUM(valordesconto) + SUM(valoracrescimo) as resultado
+               FROM pdv.venda
+               WHERE data >= ? AND data <= ?
+               AND cancelado = false
+               AND canceladoemvenda = false
+               AND id_loja = ?
+           ");
+   
+           // Executa a consulta para o período do mês anterior
+           $stmt_mes_passado->execute(array($data_inicial_mes_passado, $data_final_mes_passado, get_current_user_id()));
+   
+           // Obtém o resultado do período do mês anterior
+           $resultado_mes_passado = $stmt_mes_passado->fetchColumn();
+   
+           // Formata o resultado do mês anterior para exibir no formato de moeda
+           $resultado_mes_passado_formatado = number_format($resultado_mes_passado, 2, ',', '.'); // Formato: R$ 40.251,89
+   
+           // Exibe o formulário para inserir as datas
+           ?>
         <div class="wrap">
             <h1>Vendas</h1>
-            <form method="post" action="">
-                <label for="data_inicial">Data Inicial:</label>
-                <input type="date" id="data_inicial" name="data_inicial" value="<?= $data_inicial ?>" required />
-                <label for="data_final">Data Final:</label>
-                <input type="date" id="data_final" name="data_final" value="<?= $data_final ?>" required />
-                <input type="submit" name="submit_dates" value="Consultar Vendas" class="button button-primary" />
+            <form method="post" action="" class="row g-3">
+                <div class="col-md-6">
+                    <label for="data_inicial" class="form-label">Data Inicial:</label>
+                    <input type="date" class="form-control" id="data_inicial" name="data_inicial" value="<?= $data_inicial ?>" required />
+                </div>
+                <div class="col-md-6">
+                    <label for="data_final" class="form-label">Data Final:</label>
+                    <input type="date" class="form-control" id="data_final" name="data_final" value="<?= $data_final ?>" required />
+                </div>
+                <div class="col-12">
+                    <button type="submit" name="submit_dates" class="btn btn-primary">Consultar Vendas</button>
+                </div>
             </form>
 
             <?php
             // Se o formulário foi enviado, exibe o resultado da consulta
             if (isset($_POST['submit_dates'])) {
                 ?>
-                <div class="row">
+                <div class="row mt-3">
                     <div class="col-sm-4">
-                        <div class="card">
+                        <div class="card alert alert-success">
                             <div class="card-body">
-                                <h4 class="card-title">Total Vendas Líquidas:</h4>
-                                <h4 class="card-text">R$ <?= $resultado_formatado ?></h4>
+                                <h5 class="card-title">Total Vendas Líquidas</h5>
+                                <h6>(Período Atual)</h6>
+                                <h4 class="card-text">R$ <?= $resultado_atual_formatado ?></h4>
                             </div>
                         </div>
                     </div>
+                
+                    <div class="col-sm-4">
+                        <div class="card alert alert-info">
+                            <div class="card-body">
+                                <h5 class="card-title">Total Vendas Líquidas</h5>
+                                <h6>(Mês Anterior)</h6>
+                                <h4 class="card-text">R$ <?= $resultado_mes_passado_formatado ?></h4>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
+
                 <?php
             }
             ?>
@@ -249,3 +317,278 @@ function vr_vendas_conteudo() {
         echo "Erro ao executar a consulta: " . $e->getMessage();
     }
 }
+
+
+// Função Preço
+//Exibira uma pagina com as consulta de preços de produtos por codigo de barras e cod interno.
+function vr_preco_conteudo() {
+    // Estabelece a conexão com o banco de dados PostgreSQL
+    $conexao_postgresql = vr_estabelecer_conexao_postgresql();
+
+    // Define os valores padrão do código de barras e do ID do produto
+    $codigo_barras = '';
+    $id_produto = '';
+
+    // Verifica se o formulário foi enviado
+    if (isset($_POST['submit_consulta_preco'])) {
+        // Verifica se foi fornecido o código de barras ou o ID do produto
+        if (!empty($_POST['codigo_barras']) || !empty($_POST['id_produto'])) {
+            $codigo_barras = sanitize_text_field($_POST['codigo_barras']);
+            $id_produto = sanitize_text_field($_POST['id_produto']);
+            $id_loja = sanitize_text_field($_POST['id_loja']);
+
+            // Define a consulta com base no valor fornecido
+            if (!empty($codigo_barras)) {
+                $consulta = "pa.codigobarras = ?";
+                $valor_consulta = $codigo_barras;
+            } elseif (!empty($id_produto)) {
+                $consulta = "pa.id_produto = ?";
+                $valor_consulta = $id_produto;
+            }
+
+            // Consulta ao banco de dados
+            try {
+                // Prepara a consulta SQL
+                $stmt = $conexao_postgresql->prepare("
+                    SELECT pa.id_produto, pc.precovenda, pc.precodiaseguinte, pc.dataultimavenda, pc.estoque, p.descricaocompleta
+                    FROM produtoautomacao pa
+                    JOIN produtocomplemento pc ON pa.id_produto = pc.id_produto
+                    JOIN produto p ON pa.id_produto = p.id
+                    WHERE $consulta AND pc.id_loja = ?
+                ");
+
+                // Executa a consulta
+                $stmt->execute(array($valor_consulta, $id_loja));
+
+                // Obtém o resultado
+                $resultado = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                // Exibe o resultado
+                if ($resultado) {
+                    echo '<div class="wrap bg-white border">';
+echo '<h1>Consulta Preço</h1>';
+echo '<form method="post" action="">';
+echo '<table class="table">'; // Adicionando a tabela Bootstrap
+echo '<tr>'; // Iniciando uma nova linha
+echo '<td>'; // Coluna 1
+echo '<div class="mb-3">';
+echo '<label for="codigo_barras" class="form-label">Código de Barras:</label>';
+echo '<input type="text" class="form-control" id="codigo_barras" name="codigo_barras" value="' . $codigo_barras . '">';
+echo '</div>';
+echo '</td>'; // Fim da coluna 1
+echo '<td>'; // Coluna 2
+echo '<div class="mb-3">';
+echo '<label for="id_produto" class="form-label">ID do Produto:</label>';
+echo '<input type="text" class="form-control" id="id_produto" name="id_produto" value="' . $id_produto . '">';
+echo '</div>';
+echo '<div class="mb-3">';
+echo '<label for="id_loja" class="form-label">Loja:</label>';
+echo '<select class="form-select" id="id_loja" name="id_loja">';
+echo '<option value="1">1</option>'; // Opção padrão selecionada
+echo '<option value="2">2</option>';
+echo '</select>';
+echo '</div>';
+echo '</td>'; // Fim da coluna 2
+echo '</tr>'; // Fim da linha
+echo '</table>'; // Fim da tabela
+echo '<input type="submit" name="submit_consulta_preco" value="Consultar Preço" class="btn btn-primary">';
+echo '</form>';
+
+// Resultado dentro de uma tabela Bootstrap
+echo '<h1>Consulta Preço</h1>';
+echo '<table class="table">'; // Adicionando a tabela Bootstrap
+echo '<tr>'; // Iniciando uma nova linha
+echo '<td><strong>Descrição:</strong></td>'; // Coluna 1
+echo '<td>' . $resultado['descricaocompleta'] . '</td>'; // Coluna 2
+echo '</tr>'; // Fim da linha
+echo '<tr>'; // Iniciando uma nova linha
+echo '<td><strong>Preço de Venda:</strong></td>'; // Coluna 1
+echo '<td>R$ ' . number_format($resultado['precovenda'], 2, ',', '.') . '<div class="">Altera Preço: <input type="text" /></div></td>'; // Coluna 2
+echo '</tr>'; // Fim da linha
+echo '<tr>'; // Iniciando uma nova linha
+echo '<td><strong>Preço do Dia Seguinte:</strong></td>'; // Coluna 1
+echo '<td>R$ ' . number_format($resultado['precodiaseguinte'], 2, ',', '.') . '</td>'; // Coluna 2
+echo '</tr>'; // Fim da linha
+echo '<tr>'; // Iniciando uma nova linha
+echo '<td><strong>Estoque:</strong></td>'; // Coluna 1
+echo '<td>' . $resultado['estoque'] . '</td>'; // Coluna 2
+echo '</tr>';
+echo '<tr>'; // Iniciando uma nova linha
+echo '<td><strong>Última venda:</strong></td>'; // Coluna 1
+echo '<td>' . $resultado['dataultimavenda'] . '</td>'; // Coluna 2
+echo '</tr>'; // Fim da linha
+echo '</table>'; // Fim da tabela
+
+echo '</div>'; // Fim do wrap
+
+                } else {
+                    echo '<div class="wrap">';
+                    echo '<h1>Consulta Preço</h1>';
+                    echo '<p>Nenhum resultado encontrado para ';
+                    echo !empty($codigo_barras) ? 'o código de barras: ' . $codigo_barras : 'o ID do produto: ' . $id_produto;
+                    echo '</p>';
+                    echo '</div>';
+                }
+            } catch (PDOException $e) {
+                // Em caso de erro, exibe uma mensagem de erro
+                echo "Erro ao executar a consulta: " . $e->getMessage();
+            }
+        } else {
+            echo '<div class="wrap">';
+            echo '<h1>Consulta Preço</h1>';
+            echo '<p>Por favor, insira o código de barras ou o ID do produto.</p>';
+            echo '</div>';
+        }
+    } else {
+        // Exibe o formulário de consulta de preço
+        ?>
+        <div class="wrap">
+            <h1>Consulta Preço</h1>
+            <form method="post" action="">
+                <div class="mb-3">
+                    <label for="codigo_barras" class="form-label">Código de Barras:</label>
+                    <input type="text" class="form-control" id="codigo_barras" name="codigo_barras" value="<?= $codigo_barras ?>">
+                </div>
+                <div class="mb-3">
+                    <label for="id_produto" class="form-label">ID do Produto:</label>
+                    <input type="text" class="form-control" id="id_produto" name="id_produto" value="<?= $id_produto ?>">
+                </div>
+
+                <div class="mb-3">
+                    <label for="id_loja" class="form-label">Loja:</label>
+                    <select class="form-select" id="id_loja" name="id_loja">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                    </select>
+                </div>
+
+                <input type="submit" name="submit_consulta_preco" value="Consultar Preço" class="btn btn-primary">
+            </form>
+        </div>
+        <?php
+    }
+}
+
+function vr_dsv_conteudo() { 
+    // Verifica se o formulário foi enviado
+    if (isset($_POST['submit_dsv'])) {
+        // Obtém o número de dias sem venda especificado pelo usuário
+        $dias_sem_venda = isset($_POST['dias_sem_venda']) ? intval($_POST['dias_sem_venda']) : 0;
+    
+        // Estabelece a conexão com o banco de dados PostgreSQL
+        $conexao_postgresql = vr_estabelecer_conexao_postgresql();
+    
+        // Define a consulta SQL
+        $consulta = "1=1"; // Consulta geral, sem condição específica de código de barras
+    
+        $id_loja = '1';
+        // Consulta ao banco de dados
+        try {
+            // Prepara a consulta SQL
+            $stmt = $conexao_postgresql->prepare("
+            SELECT DISTINCT pa.id_produto, 
+                   pc.precovenda, 
+                   pc.precodiaseguinte, 
+                   pc.dataultimavenda, 
+                   pc.estoque, 
+                   p.descricaocompleta,
+                   CURRENT_DATE - pc.dataultimavenda AS dias_sem_venda
+            FROM produtoautomacao pa
+            JOIN produtocomplemento pc ON pa.id_produto = pc.id_produto
+            JOIN produto p ON pa.id_produto = p.id
+            WHERE pc.dataultimavenda <= CURRENT_DATE - INTERVAL '5 days' 
+            AND pc.dataultimavenda >= CURRENT_DATE - INTERVAL '{$dias_sem_venda} days'
+            AND pc.id_loja = ? AND pc.estoque > 0
+            ORDER BY dias_sem_venda DESC
+        ");
+        
+    
+            // Executa a consulta
+            $stmt->execute(array($id_loja));
+    
+            // Obtém os resultados da consulta
+            $resultados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+            // Exibe os resultados da consulta
+            if ($resultados) {
+                // Exibe os resultados em uma tabela
+                echo '<div class="wrap bg-white border">';
+                echo '<div class="row">';
+                echo '<div class="col-sm-6">';
+                echo '<h1>Relatório de DSV (Dias Sem Venda)</h1>';
+                echo '</div>';
+                echo '<div class="col-sm-6">';
+                echo '<button id="imprimirBtn">Imprimir</button>';
+                echo '</div>';
+                echo '<table id="tabelaResultados" class="table">';
+                echo '<thead>';
+                echo '<tr>';
+                echo '<th>ID do Produto</th>';
+                echo '<th>Descrição</th>';
+                echo '<th>Preço de Venda</th>';
+                echo '<th>Data Última Venda</th>';
+                echo '<th>Estoque</th>';
+                echo '<th>Dias Sem Venda</th>';
+                echo '</tr>';
+                echo '</thead>';
+                echo '<tbody>';
+                foreach ($resultados as $resultado) {
+                    // Formata os preços
+                    $preco_venda_formatado = 'R$ ' . number_format($resultado['precovenda'], 2, ',', '.');
+                    $data_ultima_venda_formatada = date('d/m/Y', strtotime($resultado['dataultimavenda']));
+                    
+                    // Exibe os resultados na tabela
+                    echo '<tr>';
+                    echo '<td>' . $resultado['id_produto'] . '</td>';
+                    echo '<td>' . $resultado['descricaocompleta'] . '</td>';
+                    echo '<td>' . $preco_venda_formatado . '</td>';
+                    echo '<td>' . $data_ultima_venda_formatada . '</td>';
+                    echo '<td>' . $resultado['estoque'] . '</td>';
+                    echo '<td>' . $resultado['dias_sem_venda'] . '</td>';
+                    echo '</tr>';
+                }
+                echo '</tbody>';
+                echo '</table>';
+                echo '</div>';
+            } else {
+                echo '<div class="wrap">';
+                echo '<h1>Relatório de DSV (Dias Sem Venda)</h1>';
+                echo '<p>Nenhum produto encontrado com mais de ' . $dias_sem_venda . ' dias sem venda ou estoque disponível.</p>';
+                echo '</div>';
+            }
+        } catch (PDOException $e) {
+            // Em caso de erro, exibe uma mensagem de erro
+            echo "Erro ao executar a consulta: " . $e->getMessage();
+        }
+    }
+    
+    // Exibe o formulário para o usuário especificar o número de dias sem venda
+    ?>
+
+    
+<script>
+document.getElementById("imprimirBtn").addEventListener("click", function() {
+    // Seleciona a tabela
+    var tabela = document.getElementById("tabelaResultados");
+    // Cria uma janela de impressão
+    var janela = window.open('', '', 'height=600,width=800');
+    janela.document.write('<html><head><title>Imprimir</title></head><body>');
+    // Adiciona o conteúdo da tabela à janela de impressão
+    janela.document.write(tabela.outerHTML);
+    janela.document.write('</body></html>');
+    // Fecha a janela após a impressão
+    janela.document.close();
+    janela.print();
+});
+</script>
+    <div class="wrap bg-white border">
+        <h1>Relatório de DSV (Dias Sem Venda)</h1>
+        <form method="post" action="">
+            <label for="dias_sem_venda">Até quantos dias sem venda?</label></br>
+            <input type="number" id="dias_sem_venda" name="dias_sem_venda" min="0" value="5"></br></br>
+            <input class="btn btn-primary" type="submit" name="submit_dsv" value="Consultar">
+        </form>
+    </div>
+    <?php
+}
+
